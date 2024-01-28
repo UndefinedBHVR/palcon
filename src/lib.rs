@@ -92,6 +92,11 @@ impl ServerConnection {
         self.send_and_read(COMMAND_TYPE, command).await
     }
 
+    // Sends a ping to the server and returns the response.
+    pub async fn ping(&mut self) -> Result<(), PalconError> {
+        self.send_packet(-1, "").await
+    }
+
     /// Sends a packet to the server and reads the response.
     async fn send_and_read(
         &mut self,
@@ -123,8 +128,7 @@ impl ServerConnection {
         let read_future = self.stream.read(&mut buffer);
         match timeout(read_timeout, read_future).await {
             Ok(Ok(n)) => {
-                let response = Self::decode_response(&buffer[..n]);
-                Ok(response)
+                return Self::decode_response(&buffer[..n]);
             }
             Ok(Err(e)) => Err(PalconError::from(e)),
             Err(_) => Err(PalconError::TimeoutError),
@@ -132,8 +136,11 @@ impl ServerConnection {
     }
 
     /// Decodes a response from the server.
-    fn decode_response(buffer: &[u8]) -> Response {
+    fn decode_response(buffer: &[u8]) -> Result<Response, PalconError> {
         let mut buf = buffer;
+        if buffer.len() == 0 {
+            return Err(PalconError::FailedToReadResponse);
+        }
         let response_size = buf.get_i32_le();
         // These go unused
         let _response_id = buf.get_i32_le();
@@ -142,11 +149,11 @@ impl ServerConnection {
         let payload = str::from_utf8(&buf[..payload_end])
             .unwrap_or_default()
             .to_string();
-        Response {
+        Ok(Response {
             size: response_size,
             payload,
             response_type,
-        }
+        })
     }
 }
 
@@ -174,5 +181,63 @@ mod tests {
         assert_eq!(response.payload, "Broadcasted: Hello!\n");
         assert_eq!(response.response_type, 0);
         assert_eq!(response.size, 30);
+    }
+
+    #[tokio::test]
+    async fn test_ping() {
+        dotenv().ok();
+        // Load the connection data from environment variables
+        let server_address = env::var("SERVER_ADDRESS").expect("SERVER_ADDRESS must be set");
+        let server_password = env::var("SERVER_PASSWORD").expect("SERVER_PASSWORD must be set");
+        let mut connection = ServerConnection::connect(&server_address).await.unwrap();
+        let response = connection.authenticate(&server_password).await;
+        assert!(response.is_ok());
+        let response = connection.ping().await.unwrap();
+        assert_eq!(response, ());
+    }
+
+    // Quick test to see how Palworld responds to sending commands with large delays
+    #[tokio::test]
+    async fn test_with_sleep() {
+        dotenv().ok();
+        let server_address = env::var("SERVER_ADDRESS").expect("SERVER_ADDRESS must be set");
+        let server_password = env::var("SERVER_PASSWORD").expect("SERVER_PASSWORD must be set");
+        let delay = env::var("DELAY").unwrap_or("5".to_string()).parse::<u64>().unwrap();
+        let mut connection = ServerConnection::connect(&server_address).await.unwrap();
+        let response = connection.authenticate(&server_password).await;
+        assert!(response.is_ok());
+        // We want to delay for n seconds, and ping every second while doing so
+        for i in 0..delay {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            let response = connection.ping().await.unwrap();
+            assert_eq!(response, ());
+            println!("{} seconds have passed", i + 1);
+        }
+        let response = connection.run_command("broadcast test_with_sleep!").await.unwrap();
+        assert_eq!(response.payload, "Broadcasted: test_with_sleep!\n");
+        assert_eq!(response.response_type, 0);
+        assert_eq!(response.size, 30);
+    }
+
+    #[tokio::test]
+    async fn test_sleep_no_ping() {
+        dotenv().ok();
+        let server_address = env::var("SERVER_ADDRESS").expect("SERVER_ADDRESS must be set");
+        let server_password = env::var("SERVER_PASSWORD").expect("SERVER_PASSWORD must be set");
+        let delay = env::var("DELAY").unwrap_or("5".to_string()).parse::<u64>().unwrap();
+        let mut connection = ServerConnection::connect(&server_address).await.unwrap();
+        let response = connection.authenticate(&server_password).await;
+        assert!(response.is_ok());
+        // We want to delay for n seconds, and ping every second while doing so
+        for i in 0..delay {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            println!("{} seconds have passed", i + 1);
+        }
+        let response = connection.run_command("broadcast test_sleep_no_ping!").await;
+        if delay >= 30 {
+            assert!(response.is_err());
+        } else {
+            assert!(response.is_ok());
+        }
     }
 }
