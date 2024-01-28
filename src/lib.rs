@@ -24,8 +24,6 @@ const AUTH_TYPE: i32 = 3;
 const COMMAND_TYPE: i32 = 2;
 
 /// Represents a response from the server.
-///
-/// This struct contains the size, payload, and type of the response.
 #[derive(Debug)]
 pub struct Response {
     size: i32,
@@ -53,8 +51,6 @@ impl Response {
 }
 
 /// Represents the state of the connection.
-///
-/// The connection can be either Connected or Authenticated.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ConnectionState {
     Connected,
@@ -62,8 +58,6 @@ pub enum ConnectionState {
 }
 
 /// Represents a connection to the Palworld server using RCON.
-///
-/// This struct contains the TCP stream and the current state of the connection.
 pub struct ServerConnection {
     stream: TcpStream,
     state: ConnectionState,
@@ -71,8 +65,6 @@ pub struct ServerConnection {
 
 impl ServerConnection {
     /// Connects to the server at the given address.
-    ///
-    /// This function takes an address as a string and returns a ServerConnection or a PalconError.
     pub async fn connect(address: &str) -> Result<Self, PalconError> {
         let stream = TcpStream::connect(address).await?;
         Ok(Self {
@@ -82,8 +74,6 @@ impl ServerConnection {
     }
 
     /// Authenticates with the server using the provided password.
-    ///
-    /// This function takes a password as a string and returns a Result.
     pub async fn authenticate(&mut self, password: &str) -> Result<(), PalconError> {
         if self.state == ConnectionState::Authenticated {
             return Err(PalconError::AlreadyAuthenticated);
@@ -98,15 +88,11 @@ impl ServerConnection {
     }
 
     /// Sends a command to the server and returns the response.
-    ///
-    /// This function takes a command as a string and returns a Response or a PalconError.
     pub async fn run_command(&mut self, command: &str) -> Result<Response, PalconError> {
         self.send_and_read(COMMAND_TYPE, command).await
     }
 
     /// Sends a packet to the server and reads the response.
-    ///
-    /// This function is used internally by the ServerConnection struct.
     async fn send_and_read(
         &mut self,
         packet_type: i32,
@@ -117,8 +103,6 @@ impl ServerConnection {
     }
 
     /// Sends a packet to the server.
-    ///
-    /// This function is used internally by the ServerConnection struct.
     async fn send_packet(&mut self, packet_type: i32, payload: &str) -> Result<(), PalconError> {
         let mut packet = BytesMut::with_capacity(4 + 4 + payload.len() + 2);
         packet.put_i32_le(PACKET_LENGTH_OFFSET + payload.len() as i32); // Packet length
@@ -132,8 +116,6 @@ impl ServerConnection {
     }
 
     /// Reads a response from the server.
-    ///
-    /// This function is used internally by the ServerConnection struct.
     async fn read_response(&mut self) -> Result<Response, PalconError> {
         let mut buffer = vec![0; 4096];
         let read_timeout = Duration::from_secs(5);
@@ -150,8 +132,6 @@ impl ServerConnection {
     }
 
     /// Decodes a response from the server.
-    ///
-    /// This function is used internally by the ServerConnection struct.
     fn decode_response(buffer: &[u8]) -> Response {
         let mut buf = buffer;
         let response_size = buf.get_i32_le();
