@@ -1,9 +1,22 @@
-use bytes::{Buf, BufMut, BytesMut};
-use error::PalconError;
 use std::str;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
-use tokio::time::{timeout, Duration};
+
+use bytes::{
+    Buf,
+    BufMut,
+    BytesMut,
+};
+use error::PalconError;
+use tokio::{
+    io::{
+        AsyncReadExt,
+        AsyncWriteExt,
+    },
+    net::TcpStream,
+    time::{
+        timeout,
+        Duration,
+    },
+};
 pub mod error;
 
 const PACKET_LENGTH_OFFSET: i32 = 0;
@@ -11,7 +24,7 @@ const AUTH_TYPE: i32 = 3;
 const COMMAND_TYPE: i32 = 2;
 
 /// Represents a response from the server.
-/// 
+///
 /// This struct contains the size, payload, and type of the response.
 #[derive(Debug)]
 pub struct Response {
@@ -39,16 +52,8 @@ impl Response {
     }
 }
 
-/// Represents a connection to the server.
-/// 
-/// This struct contains the TCP stream and the current state of the connection.
-pub struct ServerConnection {
-    stream: TcpStream,
-    state: ConnectionState,
-}
-
 /// Represents the state of the connection.
-/// 
+///
 /// The connection can be either Connected or Authenticated.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ConnectionState {
@@ -56,9 +61,17 @@ pub enum ConnectionState {
     Authenticated,
 }
 
+/// Represents a connection to the Palworld server using RCON.
+///
+/// This struct contains the TCP stream and the current state of the connection.
+pub struct ServerConnection {
+    stream: TcpStream,
+    state: ConnectionState,
+}
+
 impl ServerConnection {
     /// Connects to the server at the given address.
-    /// 
+    ///
     /// This function takes an address as a string and returns a ServerConnection or a PalconError.
     pub async fn connect(address: &str) -> Result<Self, PalconError> {
         let stream = TcpStream::connect(address).await?;
@@ -69,7 +82,7 @@ impl ServerConnection {
     }
 
     /// Authenticates with the server using the provided password.
-    /// 
+    ///
     /// This function takes a password as a string and returns a Result.
     pub async fn authenticate(&mut self, password: &str) -> Result<(), PalconError> {
         if self.state == ConnectionState::Authenticated {
@@ -85,14 +98,14 @@ impl ServerConnection {
     }
 
     /// Sends a command to the server and returns the response.
-    /// 
+    ///
     /// This function takes a command as a string and returns a Response or a PalconError.
     pub async fn run_command(&mut self, command: &str) -> Result<Response, PalconError> {
         self.send_and_read(COMMAND_TYPE, command).await
     }
 
     /// Sends a packet to the server and reads the response.
-    /// 
+    ///
     /// This function is used internally by the ServerConnection struct.
     async fn send_and_read(
         &mut self,
@@ -104,7 +117,7 @@ impl ServerConnection {
     }
 
     /// Sends a packet to the server.
-    /// 
+    ///
     /// This function is used internally by the ServerConnection struct.
     async fn send_packet(&mut self, packet_type: i32, payload: &str) -> Result<(), PalconError> {
         let mut packet = BytesMut::with_capacity(4 + 4 + payload.len() + 2);
@@ -119,7 +132,7 @@ impl ServerConnection {
     }
 
     /// Reads a response from the server.
-    /// 
+    ///
     /// This function is used internally by the ServerConnection struct.
     async fn read_response(&mut self) -> Result<Response, PalconError> {
         let mut buffer = vec![0; 4096];
@@ -132,14 +145,12 @@ impl ServerConnection {
                 Ok(response)
             }
             Ok(Err(e)) => Err(PalconError::from(e)),
-            Err(_) => {
-                Err(PalconError::TimeoutError)
-            }
+            Err(_) => Err(PalconError::TimeoutError),
         }
     }
 
     /// Decodes a response from the server.
-    /// 
+    ///
     /// This function is used internally by the ServerConnection struct.
     fn decode_response(buffer: &[u8]) -> Response {
         let mut buf = buffer;
@@ -147,10 +158,7 @@ impl ServerConnection {
         // These go unused
         let _response_id = buf.get_i32_le();
         let response_type = buf.get_i32_le();
-        let payload_end = buf
-            .iter()
-            .position(|&b| b == 0)
-            .unwrap_or(buf.len());
+        let payload_end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
         let payload = str::from_utf8(&buf[..payload_end])
             .unwrap_or_default()
             .to_string();
@@ -164,12 +172,14 @@ impl ServerConnection {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use dotenv::dotenv;
     use std::env;
 
+    use dotenv::dotenv;
+
+    use super::*;
+
     /// Quick test to make sure the library works.
-    /// 
+    ///
     /// This test connects to a server, authenticates, sends a command, and checks the response.
     #[tokio::test]
     async fn quick_test() {
@@ -180,10 +190,7 @@ mod tests {
         let mut connection = ServerConnection::connect(&server_address).await.unwrap();
         let response = connection.authenticate(&server_password).await;
         assert!(response.is_ok());
-        let response = connection
-            .run_command("broadcast Hello!")
-            .await
-            .unwrap();
+        let response = connection.run_command("broadcast Hello!").await.unwrap();
         assert_eq!(response.payload, "Broadcasted: Hello!\n");
         assert_eq!(response.response_type, 0);
         assert_eq!(response.size, 30);
