@@ -1,0 +1,15 @@
+[package]
+name = "palcon"
+version = "0.1.0"
+edition = "2021"
+license = "ISC"
+authors = ["UndefinedBHVR"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+tokio = { version = "1.12", features = ["full"] }
+bytes = "1.5.0"
+
+# Dependencies for testing
+[dev-dependencies]
+dotenv = "0.15.0"
